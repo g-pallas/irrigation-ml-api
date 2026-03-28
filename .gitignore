@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+evaluation_outputs_scan/
+evaluation_outputs_scan_hourly/
 
 .DS_Store
 Thumbs.db
