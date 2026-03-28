@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 import os
 
 import joblib
@@ -14,9 +13,8 @@ MODEL_PATH = Path(os.getenv("IRRIGATION_MODEL_PATH", "irrigation_model_scan_hour
 class PredictionRequest(BaseModel):
     moisture: float = Field(..., description="Soil moisture reading.")
     temperature: float = Field(..., description="Soil temperature reading.")
-    humidity: Optional[float] = Field(default=None, description="Optional air humidity reading.")
-    soil_ph: Optional[float] = Field(default=None, description="Optional soil pH reading.")
-    zone: Optional[str] = Field(default=None, description="Optional field zone identifier.")
+    humidity: float = Field(..., description="Air humidity reading.")
+    zone: str = Field(..., description="Field zone identifier.")
 
 
 class PredictionResponse(BaseModel):
@@ -27,8 +25,8 @@ class PredictionResponse(BaseModel):
 
 app = FastAPI(
     title="Irrigation Recommendation API",
-    description="Predict irrigation actions from soil sensor readings.",
-    version="1.0.0",
+    description="Predict irrigation actions from soil moisture, soil temperature, air humidity, and zone readings.",
+    version="1.0.1",
 )
 
 
@@ -57,7 +55,6 @@ def predict(request: PredictionRequest):
         "moisture": request.moisture,
         "temperature": request.temperature,
         "humidity": request.humidity,
-        "soil_ph": request.soil_ph,
         "zone": request.zone,
     }
     input_df = pd.DataFrame([row]).reindex(columns=feature_columns)
