@@ -5,9 +5,9 @@ param(
     [string]$EvaluationDir = "evaluation_outputs_scan_hourly",
     [string]$Zone = "Walnut Gulch #1, AZ",
     [ValidateSet("binary", "three_class", "duration", "quantile")]
-    [string]$LabelMode = "quantile",
-    [double]$DryThreshold = 20.0,
-    [double]$WetThreshold = 40.0,
+    [string]$LabelMode = "three_class",
+    [double]$DryThreshold = 6.0,
+    [double]$WetThreshold = 10.0,
     [double]$InvalidBelow = -50.0,
     [Nullable[double]]$InvalidAbove = $null,
     [string]$DateColumn = "Date",

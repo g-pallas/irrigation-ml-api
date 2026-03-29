@@ -10,15 +10,14 @@ This starter model predicts an irrigation action for your capstone app using soi
 - `schedule_soon`: irrigation should be scheduled soon
 - `hold_irrigation`: no irrigation is needed yet
 
-The current primary model path uses the USDA SCAN Arizona hourly dataset with multi-year Walnut Gulch #1 data and a three-class output. The USDA SCAN daily workflow is kept as a baseline comparison path, and the Mendeley workflow remains as a secondary comparison path.
+The current primary model path uses the USDA SCAN Arizona hourly dataset with multi-year Walnut Gulch #1 data and a threshold-based three-class output. The USDA SCAN daily workflow is kept as a baseline comparison path, and the Mendeley workflow remains as a secondary comparison path.
 
 ## Input features
 
 - `moisture`
 - `temperature`
-- `humidity` (optional but recommended)
-- `soil_ph` (optional if your hardware supports it)
-- `zone` (optional field area identifier)
+- `humidity`
+- `zone`
 
 ## Install
 
@@ -37,7 +36,7 @@ python train_irrigation_model.py --csv prepared_soil_data_scan_hourly.csv --mode
 Use the hourly Arizona exports when you want the main high-resolution model for the app:
 
 ```powershell
-python prepare_usda_scan_hourly.py --input "C:\Users\kenji\Downloads\usdascan\hourly\2026_ALL_YEAR=2024_hourly.csv" --output prepared_soil_data_scan_hourly.csv --zone "Walnut Gulch #1, AZ" --date-col "Date" --time-col "Time" --moisture-col "SMS.I-1:-2 (pct) (loam)" --temperature-col "STO.I-1:-2 (degC)" --humidity-col "RHUM.I-1 (pct)"
+python prepare_usda_scan_hourly.py --input "C:\Users\kenji\Downloads\usdascan\hourly\2026_ALL_YEAR=2024_hourly.csv" --output prepared_soil_data_scan_hourly.csv --zone "Walnut Gulch #1, AZ" --label-mode three_class --date-col "Date" --time-col "Time" --moisture-col "SMS.I-1:-2 (pct) (loam)" --temperature-col "STO.I-1:-2 (degC)" --humidity-col "RHUM.I-1 (pct)"
 ```
 
 Train the hourly model:
@@ -51,6 +50,25 @@ Run the full hourly pipeline in one command:
 ```powershell
 .\run_scan_hourly_pipeline.ps1
 ```
+
+The hourly pipeline now defaults to `three_class`, which uses threshold-based labels that are easier to explain for real irrigation decisions.
+
+For the current Walnut Gulch hourly dataset, the default thresholds are tuned to the actual moisture scale in the data:
+
+- `dry_threshold = 6`
+- `wet_threshold = 10`
+
+That produces a usable three-class split on this dataset while still keeping the meaning intuitive:
+
+- `irrigate_now` when moisture is below the effective dry threshold
+- `schedule_soon` when moisture is between the dry and wet thresholds
+- `hold_irrigation` when moisture is above the effective wet threshold
+
+The effective thresholds are adjusted slightly by humidity and temperature:
+
+- higher humidity raises the thresholds a little
+- hotter temperatures lower the thresholds a little
+- very cool temperatures raise the thresholds a little
 
 Use multiple hourly years:
 
@@ -206,8 +224,18 @@ For the daily SCAN baseline path:
 ## Predict
 
 ```powershell
-python predict_irrigation.py --model irrigation_model_scan_hourly.pkl --moisture 7.4 --temperature 14.2 --humidity 18 --zone "Walnut Gulch #1, AZ"
+python predict_irrigation.py --model irrigation_model_scan_hourly.pkl --moisture 4.0 --temperature 35 --humidity 30 --zone "Walnut Gulch #1, AZ"
+python predict_irrigation.py --model irrigation_model_scan_hourly.pkl --moisture 7.5 --temperature 24 --humidity 45 --zone "Walnut Gulch #1, AZ"
+python predict_irrigation.py --model irrigation_model_scan_hourly.pkl --moisture 12.0 --temperature 24 --humidity 70 --zone "Walnut Gulch #1, AZ"
 ```
+
+For the current Walnut Gulch hourly model, representative ranges are:
+
+- around `4` moisture: usually `schedule_soon`
+- around `7.5` moisture: usually `schedule_soon`
+- around `12` moisture: usually `hold_irrigation`
+
+This is because the SCAN hourly source data uses a much lower moisture range than the demo percentages shown in the mobile UI.
 
 ## Run the API server
 

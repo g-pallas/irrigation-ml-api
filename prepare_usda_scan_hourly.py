@@ -89,19 +89,19 @@ def parse_args():
     parser.add_argument(
         "--label-mode",
         choices=["binary", "three_class", "duration", "quantile"],
-        default="quantile",
+        default="three_class",
         help="How to derive the irrigation target from soil moisture.",
     )
     parser.add_argument(
         "--dry-threshold",
         type=float,
-        default=20.0,
+        default=6.0,
         help="Binary/three-class low moisture threshold.",
     )
     parser.add_argument(
         "--wet-threshold",
         type=float,
-        default=40.0,
+        default=10.0,
         help="Three-class high moisture threshold.",
     )
     parser.add_argument(
