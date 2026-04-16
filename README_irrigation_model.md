@@ -360,3 +360,169 @@ Replace the sample rows with actual field data collected by the app or UGV:
 - Keep the class names consistent across the dataset
 
 The model will become more useful once you collect many real samples from different days, zones, and weather conditions.
+
+## Prediction reliability and error logging
+
+The `/predict` endpoint now returns reliability metadata and adviser-facing error signals in a single structured response.
+
+### Response fields
+
+- `recommendation`: predicted class on success, `null` for non-success statuses
+- `confidence_irrigate_now`: probability for `irrigate_now`
+- `confidence_schedule_soon`: probability for `schedule_soon`
+- `confidence_hold_irrigation`: probability for `hold_irrigation`
+- `top_confidence`: highest of the three class confidences
+- `low_confidence`: `true` when `top_confidence < 0.60`
+- `prediction_status`: one of `success`, `invalid_input`, `model_error`, `api_error`
+- `error_flag`: `true` when status is not `success` or when `low_confidence` is `true`
+- `error_message`: empty on normal success, or explanation for low-confidence/invalid/model/api errors
+- `model_version`: model version string from `IRRIGATION_MODEL_VERSION`
+- `confidence`: legacy compatibility map sorted by probability (kept for existing clients)
+- `features_used`: model feature columns used for inference
+
+### Input validation before inference
+
+The API validates request values before running the model:
+
+- `moisture` must be between `0` and `100`
+- `humidity` must be between `0` and `100`
+- `temperature` must be between `-20` and `60`
+- `zone` must be present and non-empty
+
+If validation fails, prediction is not executed and the API returns:
+
+- `prediction_status = invalid_input`
+- `error_flag = true`
+- all confidence fields as `0`
+- `recommendation = null`
+- exact validation details in `error_message`
+
+### Why low-confidence is treated as an adviser error
+
+Low-confidence predictions are still valid model outputs, but they are flagged to support adviser review workflows. This allows uncertain predictions to be tracked and audited as reliability risks, not only runtime failures.
+
+### Model version environment variable
+
+Use this optional env var to label outputs:
+
+```env
+IRRIGATION_MODEL_VERSION=scan_hourly_v1
+```
+
+If omitted, the API defaults to `scan_hourly_v1`.
+
+### Structured prediction log payload
+
+A reusable helper now builds a canonical log record for each prediction attempt:
+
+- `timestamp`
+- `zone`
+- `moisture`
+- `temperature`
+- `humidity`
+- `recommendation`
+- `confidence_irrigate_now`
+- `confidence_schedule_soon`
+- `confidence_hold_irrigation`
+- `top_confidence`
+- `low_confidence`
+- `prediction_status`
+- `error_flag`
+- `error_message`
+- `model_version`
+
+The API currently emits this payload in server logs (`[prediction_log] ...`) so it can be forwarded to Supabase/Firebase by a caller or backend integration.
+
+### Example responses
+
+Valid success:
+
+```json
+{
+  "recommendation": "hold_irrigation",
+  "confidence_irrigate_now": 0.0712,
+  "confidence_schedule_soon": 0.2011,
+  "confidence_hold_irrigation": 0.7277,
+  "top_confidence": 0.7277,
+  "low_confidence": false,
+  "prediction_status": "success",
+  "error_flag": false,
+  "error_message": "",
+  "model_version": "scan_hourly_v1",
+  "confidence": {
+    "hold_irrigation": 0.7277,
+    "schedule_soon": 0.2011,
+    "irrigate_now": 0.0712
+  },
+  "features_used": ["moisture", "temperature", "humidity", "zone"]
+}
+```
+
+Low-confidence success:
+
+```json
+{
+  "recommendation": "schedule_soon",
+  "confidence_irrigate_now": 0.201,
+  "confidence_schedule_soon": 0.452,
+  "confidence_hold_irrigation": 0.347,
+  "top_confidence": 0.452,
+  "low_confidence": true,
+  "prediction_status": "success",
+  "error_flag": true,
+  "error_message": "Low-confidence prediction",
+  "model_version": "scan_hourly_v1",
+  "confidence": {
+    "schedule_soon": 0.452,
+    "hold_irrigation": 0.347,
+    "irrigate_now": 0.201
+  },
+  "features_used": ["moisture", "temperature", "humidity", "zone"]
+}
+```
+
+Invalid input:
+
+```json
+{
+  "recommendation": null,
+  "confidence_irrigate_now": 0.0,
+  "confidence_schedule_soon": 0.0,
+  "confidence_hold_irrigation": 0.0,
+  "top_confidence": 0.0,
+  "low_confidence": true,
+  "prediction_status": "invalid_input",
+  "error_flag": true,
+  "error_message": "moisture must be between 0 and 100.",
+  "model_version": "scan_hourly_v1",
+  "confidence": {
+    "irrigate_now": 0.0,
+    "schedule_soon": 0.0,
+    "hold_irrigation": 0.0
+  },
+  "features_used": []
+}
+```
+
+Model error:
+
+```json
+{
+  "recommendation": null,
+  "confidence_irrigate_now": 0.0,
+  "confidence_schedule_soon": 0.0,
+  "confidence_hold_irrigation": 0.0,
+  "top_confidence": 0.0,
+  "low_confidence": true,
+  "prediction_status": "model_error",
+  "error_flag": true,
+  "error_message": "Model file not found: ...",
+  "model_version": "scan_hourly_v1",
+  "confidence": {
+    "irrigate_now": 0.0,
+    "schedule_soon": 0.0,
+    "hold_irrigation": 0.0
+  },
+  "features_used": []
+}
+```
